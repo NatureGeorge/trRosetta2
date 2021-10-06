@@ -35,7 +35,7 @@ def get_angles(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
     return np.arccos(x)
 
 
-def get_coords6d(xyz: np.ndarray, dmax: float = 20.0, dist_fill_value: float = 999.9):
+def get_coords6d(xyz: np.ndarray, dmax: float = 20.0, dist_fill_value: float = 999.9, dtype=np.float64):
     '''get 6d coordinates from x,y,z coords of N,Ca,C atoms'''
 
     nres = xyz.shape[1]
@@ -45,11 +45,15 @@ def get_coords6d(xyz: np.ndarray, dmax: float = 20.0, dist_fill_value: float = 9
     Ca = xyz[1]
     C = xyz[2]
 
-    # recreate Cb given N,Ca,C
-    b = Ca - N
-    c = C - Ca
-    a = np.cross(b, c)
-    Cb = -0.58273431*a + 0.56802827*b - 0.54067466*c + Ca
+    if xyz.shape[0] == 3:
+        # recreate Cb given N,Ca,C
+        b = Ca - N
+        c = C - Ca
+        a = np.cross(b, c)
+        Cb = -0.58273431*a + 0.56802827*b - 0.54067466 * \
+            c + Ca  # not that precise for Proline
+    else:
+        Cb = xyz[3]
 
     # fast neighbors search to collect all
     # Cb-Cb pairs within dmax
@@ -65,19 +69,20 @@ def get_coords6d(xyz: np.ndarray, dmax: float = 20.0, dist_fill_value: float = 9
     idx1_sym = idx1[mask_for_sym]
 
     # Cb-Cb distance matrix
-    dist6d = np.full((nres, nres), dist_fill_value)
-    dist6d[idx0_sym, idx1_sym] = dist6d[idx1_sym, idx0_sym] = np.linalg.norm(Cb[idx1_sym]-Cb[idx0_sym], axis=-1)
+    dist6d = np.full((nres, nres), dist_fill_value, dtype=dtype)
+    dist6d[idx1_sym, idx0_sym] = dist6d[idx0_sym, idx1_sym] = np.linalg.norm(Cb[idx1_sym]-Cb[idx0_sym], axis=-1)
 
     # matrix of Ca-Cb-Cb-Ca dihedrals (omega: -pi..pi)
-    omega6d = np.zeros((nres, nres))
-    omega6d[idx0_sym, idx1_sym] = omega6d[idx1_sym, idx0_sym] = get_dihedrals(Ca[idx0_sym], Cb[idx0_sym], Cb[idx1_sym], Ca[idx1_sym])
+    omega6d = np.zeros((nres, nres), dtype=dtype)
+    omega6d[idx1_sym, idx0_sym] = omega6d[idx0_sym, idx1_sym] = get_dihedrals(
+        Ca[idx0_sym], Cb[idx0_sym], Cb[idx1_sym], Ca[idx1_sym])
 
     # matrix of polar coord theta (theta: -pi..pi)
-    theta6d = np.zeros((nres, nres))
+    theta6d = np.zeros((nres, nres), dtype=dtype)
     theta6d[idx0, idx1] = get_dihedrals(N[idx0], Ca[idx0], Cb[idx0], Cb[idx1])
 
     # matrix of polar coord phi (phi: 0..pi)
-    phi6d = np.zeros((nres, nres))
+    phi6d = np.zeros((nres, nres), dtype=dtype)
     phi6d[idx0, idx1] = get_angles(Ca[idx0], Cb[idx0], Cb[idx1])
 
     return dist6d, omega6d, theta6d, phi6d
